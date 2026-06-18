@@ -6,7 +6,6 @@ import io.redspace.ironsspellbooks.item.weapons.StaffItem;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.attributes.Attribute;
-import net.minecraft.world.entity.ai.attributes.AttributeMap;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.item.ItemStack;
@@ -35,51 +34,43 @@ public abstract class LivingEntityStaffMixin {
     )
     public void irons_handleEquipmentChanges(CallbackInfoReturnable<Map<EquipmentSlot, ItemStack>> cir) {
         Map<EquipmentSlot, ItemStack> changedEquipment = cir.getReturnValue();
-        if (changedEquipment == null) return;
+        if (changedEquipment == null || changedEquipment.isEmpty()) return;
 
         LivingEntity self = (LivingEntity) (Object) this;
+        ItemStack mainhandStack = self.getMainHandItem();
+        ItemStack offhandStack = self.getOffhandItem();
 
+        // 检查主副手是否发生变化
+        boolean mainhandChanged = changedEquipment.containsKey(EquipmentSlot.MAINHAND);
+        boolean offhandChanged = changedEquipment.containsKey(EquipmentSlot.OFFHAND);
+
+        if (!mainhandChanged && !offhandChanged) return;
+
+        // 先清理所有手部法杖的属性
         for (EquipmentSlot slot : irons_handSlots) {
-            ItemStack currentStack = changedEquipment.get(slot);
-            if (currentStack != null) {
-                ItemStack oldStack = this.getLastHandItem(slot);
+            ItemStack oldStack = this.getLastHandItem(slot);
+            if (oldStack.getItem() instanceof StaffItem) {
+                self.getAttributes().removeAttributeModifiers(irons_filterAttributes(oldStack));
+            }
+        }
 
-                // 只要是 StaffItem 就算作法杖
-                boolean selected = currentStack.getItem() instanceof StaffItem;
-                boolean deselected = oldStack.getItem() instanceof StaffItem;
-
-                if (selected || deselected) {
-                    // 情况 A：主手发生变化
-                    if (slot == EquipmentSlot.MAINHAND) {
-                        ItemStack offhandStack = self.getOffhandItem();
-                        // 如果副手有法杖，且和主手新/旧法杖不是同一种
-                        if (offhandStack.getItem() instanceof StaffItem && !ItemStack.isSameItem(offhandStack, currentStack)) {
-                            if (selected) {
-                                // 主手拿起了新法杖，移除副手可能冲突的属性
-                                self.getAttributes().removeAttributeModifiers(irons_filterAttributes(offhandStack));
-                            }
-                            if (deselected) {
-                                // 主手放下了法杖，恢复副手法杖的属性
-                                self.getAttributes().addTransientAttributeModifiers(irons_filterAttributes(offhandStack));
-                            }
-                        }
-                    }
-                    // 情况 B：副手发生变化
-                    else if (slot == EquipmentSlot.OFFHAND) {
-                        ItemStack mainhandStack = self.getMainHandItem();
-
-                        // 逻辑：如果副手拿起了法杖，且主手【没有拿法杖】或者主手拿的是【不同种类的法杖】
-                        if (selected && (!(mainhandStack.getItem() instanceof StaffItem) || !ItemStack.isSameItem(mainhandStack, currentStack))) {
-                            self.getAttributes().addTransientAttributeModifiers(irons_filterAttributes(currentStack));
-                        }
-
-                        // 如果副手放下了法杖
-                        if (deselected && !ItemStack.isSameItem(mainhandStack, oldStack)) {
-                            self.getAttributes().removeAttributeModifiers(irons_filterAttributes(oldStack));
-                        }
-                    }
+        // 如果副手有法杖，且主手没有法杖或主手法杖与副手不同，则应用副手法杖的属性
+        if (offhandStack.getItem() instanceof StaffItem) {
+            boolean shouldApplyOffhand = true;
+            if (mainhandStack.getItem() instanceof StaffItem) {
+                // 如果主副手是同样的法杖，只应用一份
+                if (ItemStack.isSameItem(mainhandStack, offhandStack)) {
+                    shouldApplyOffhand = false;
                 }
             }
+            if (shouldApplyOffhand) {
+                self.getAttributes().addTransientAttributeModifiers(irons_filterAttributes(offhandStack));
+            }
+        }
+
+        // 如果主手有法杖，应用主手法杖的属性
+        if (mainhandStack.getItem() instanceof StaffItem) {
+            self.getAttributes().addTransientAttributeModifiers(irons_filterAttributes(mainhandStack));
         }
     }
 
